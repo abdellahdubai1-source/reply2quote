@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - 'reply2quote-fixed.zip'
+      - '.github/workflows/import-reply2quote.yml'
 
 permissions:
   contents: write
@@ -23,6 +24,9 @@ jobs:
         run: |
           unzip -o reply2quote-fixed.zip
           rm -f reply2quote-fixed.zip
+          # The Actions token can push normal source files, but it cannot create a new workflow file.
+          # CI will be added separately after this import succeeds.
+          rm -f .github/workflows/ci.yml
           rm -f .github/workflows/import-reply2quote.yml
 
       - name: Commit production source
