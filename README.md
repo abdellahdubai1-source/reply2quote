@@ -6,6 +6,8 @@ WhatsApp message, get a professional reply and a ready-to-send quotation PDF
 
 **Core workflow:** Customer Message → AI Reply → Quote → PDF → WhatsApp
 
+> Deployment: connected to Vercel from the `main` branch.
+
 ## Tech stack
 
 - **Next.js 14** (App Router) + **TypeScript**
