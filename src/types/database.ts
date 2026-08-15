@@ -49,28 +49,35 @@ export interface Database {
         Row: ProfileRow;
         Insert: Partial<ProfileRow> & { user_id: string };
         Update: Partial<ProfileRow>;
+        Relationships: [];
       };
       quotes: {
         Row: QuoteRow;
         Insert: Partial<QuoteRow> & { user_id: string; quote_number: string };
         Update: Partial<QuoteRow>;
+        Relationships: [];
       };
       quote_counters: {
         Row: { user_id: string; last_number: number };
         Insert: { user_id: string; last_number?: number };
         Update: { user_id?: string; last_number?: number };
+        Relationships: [];
       };
       quote_usage: {
         Row: { user_id: string; month_start: string; quote_count: number; updated_at: string };
         Insert: { user_id: string; month_start: string; quote_count?: number; updated_at?: string };
         Update: { quote_count?: number; updated_at?: string };
+        Relationships: [];
       };
     };
+    Views: Record<string, never>;
     Functions: {
       generate_quote_number: {
         Args: { p_user_id: string };
         Returns: string;
       };
     };
+    Enums: Record<string, never>;
+    CompositeTypes: Record<string, never>;
   };
 }
