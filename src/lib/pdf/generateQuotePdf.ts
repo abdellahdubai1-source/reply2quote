@@ -31,10 +31,6 @@ function formatFromMime(mime: string): ImageFormat {
   return "PNG";
 }
 
-/** Best-effort fetch + convert to a data URL so jsPDF can embed a
- *  remotely-hosted logo (e.g. a Supabase Storage public URL). Returns
- *  null on any failure so PDF generation never blocks on a broken
- *  image — the layout below always accounts for "no logo". */
 async function toDataUrl(url: string): Promise<{ dataUrl: string; ratio: number; format: ImageFormat } | null> {
   try {
     const res = await fetch(url, { mode: "cors" });
@@ -65,8 +61,6 @@ export async function generateQuotePdf(input: QuotePdfInput): Promise<jsPDF> {
   const doc = new jsPDF({ unit: "mm", format: "a4" });
 
   let cursorY = MARGIN;
-
-  // ── Header: logo + business identity (left) / QUOTATION (right) ──
   const logo = business.logoUrl ? await toDataUrl(business.logoUrl) : null;
   const headerTop = cursorY;
   let leftX = MARGIN;
@@ -76,9 +70,7 @@ export async function generateQuotePdf(input: QuotePdfInput): Promise<jsPDF> {
     const w = Math.min(h * logo.ratio, 32);
     try {
       doc.addImage(logo.dataUrl, logo.format, MARGIN, headerTop, w, h, undefined, "FAST");
-    } catch {
-      // Unsupported format slipped through — skip the image, keep going.
-    }
+    } catch {}
     leftX = MARGIN + w + 5;
   }
 
@@ -103,7 +95,6 @@ export async function generateQuotePdf(input: QuotePdfInput): Promise<jsPDF> {
     contactY += 4.2;
   }
 
-  // Right-aligned "QUOTATION" block
   doc.setFont("helvetica", "bold");
   doc.setFontSize(20);
   doc.setTextColor(BRAND);
@@ -116,14 +107,11 @@ export async function generateQuotePdf(input: QuotePdfInput): Promise<jsPDF> {
   doc.text(`Date: ${formatDate(date)}`, PAGE_W - MARGIN, headerTop + 18, { align: "right" });
 
   cursorY = Math.max(contactY, headerTop + 22) + 4;
-
-  // Divider
   doc.setDrawColor(BORDER);
   doc.setLineWidth(0.4);
   doc.line(MARGIN, cursorY, PAGE_W - MARGIN, cursorY);
   cursorY += 8;
 
-  // ── Prepared For ──
   doc.setFont("helvetica", "bold");
   doc.setFontSize(9);
   doc.setTextColor(FAINT);
@@ -143,7 +131,6 @@ export async function generateQuotePdf(input: QuotePdfInput): Promise<jsPDF> {
   }
   cursorY += 8;
 
-  // ── Service table ──
   const descriptionCell = quote.description?.trim()
     ? `${quote.service}\n${quote.description.trim()}`
     : quote.service || "Service";
@@ -152,29 +139,9 @@ export async function generateQuotePdf(input: QuotePdfInput): Promise<jsPDF> {
     startY: cursorY,
     margin: { left: MARGIN, right: MARGIN },
     head: [["Description", "Qty", "Unit Price", "Amount"]],
-    body: [
-      [
-        descriptionCell,
-        String(quote.quantity),
-        formatCurrency(quote.unitPrice, quote.currency),
-        formatCurrency(quote.quantity * quote.unitPrice, quote.currency),
-      ],
-    ],
-    styles: {
-      font: "helvetica",
-      fontSize: 9.5,
-      textColor: INK,
-      cellPadding: 4,
-      lineColor: BORDER,
-      lineWidth: 0.25,
-      valign: "top",
-    },
-    headStyles: {
-      fillColor: [4, 120, 87],
-      textColor: 255,
-      fontStyle: "bold",
-      halign: "left",
-    },
+    body: [[descriptionCell, String(quote.quantity), formatCurrency(quote.unitPrice, quote.currency), formatCurrency(quote.quantity * quote.unitPrice, quote.currency)]],
+    styles: { font: "helvetica", fontSize: 9.5, textColor: INK, cellPadding: 4, lineColor: BORDER, lineWidth: 0.25, valign: "top" },
+    headStyles: { fillColor: [4, 120, 87], textColor: 255, fontStyle: "bold", halign: "left" },
     columnStyles: {
       0: { cellWidth: CONTENT_W - 74 },
       1: { cellWidth: 18, halign: "center" },
@@ -184,10 +151,9 @@ export async function generateQuotePdf(input: QuotePdfInput): Promise<jsPDF> {
     theme: "grid",
   } as Parameters<typeof autoTable>[1]);
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  cursorY = (doc as any).lastAutoTable.finalY + 8;
+  const tableDoc = doc as jsPDF & { lastAutoTable?: { finalY: number } };
+  cursorY = (tableDoc.lastAutoTable?.finalY ?? cursorY) + 8;
 
-  // ── Totals block (right aligned) ──
   const totalsX2 = PAGE_W - MARGIN;
   const totalsX1 = totalsX2 - 70;
 
@@ -201,31 +167,24 @@ export async function generateQuotePdf(input: QuotePdfInput): Promise<jsPDF> {
   };
 
   totalsRow("Subtotal", formatCurrency(totals.subtotal, quote.currency));
-  totalsRow(
-    totals.vatRate > 0 ? `VAT (${totals.vatRate}%)` : "VAT",
-    totals.vatRate > 0 ? formatCurrency(totals.vatAmount, quote.currency) : "Not applicable"
-  );
+  totalsRow(totals.vatRate > 0 ? `VAT (${totals.vatRate}%)` : "VAT", totals.vatRate > 0 ? formatCurrency(totals.vatAmount, quote.currency) : "Not applicable");
   doc.setDrawColor(BORDER);
   doc.line(totalsX1, cursorY - 3, totalsX2, cursorY - 3);
   totalsRow("TOTAL", formatCurrency(totals.total, quote.currency), { bold: true, accent: true });
-
   cursorY += 4;
 
   const PAGE_H = doc.internal.pageSize.getHeight();
-  const FOOTER_RESERVE = 26; // space reserved at the bottom of every page for the footer
+  const FOOTER_RESERVE = 26;
 
-  // ── Notes ── (paginate if the note text would run into the footer)
   if (quote.notes?.trim()) {
     doc.setFont("helvetica", "normal");
     doc.setFontSize(9.5);
     const noteLines = doc.splitTextToSize(quote.notes.trim(), CONTENT_W);
     const noteBlockHeight = 5 + noteLines.length * 4.6 + 4;
-
     if (cursorY + noteBlockHeight > PAGE_H - FOOTER_RESERVE) {
       doc.addPage();
       cursorY = MARGIN;
     }
-
     doc.setFont("helvetica", "bold");
     doc.setFontSize(9);
     doc.setTextColor(FAINT);
@@ -235,10 +194,8 @@ export async function generateQuotePdf(input: QuotePdfInput): Promise<jsPDF> {
     doc.setFontSize(9.5);
     doc.setTextColor(SOFT);
     doc.text(noteLines, MARGIN, cursorY);
-    cursorY += noteLines.length * 4.6 + 4;
   }
 
-  // ── Footer (always pinned to the bottom of the LAST page) ──
   const footerY = PAGE_H - 18;
   doc.setDrawColor(BORDER);
   doc.line(MARGIN, footerY - 8, PAGE_W - MARGIN, footerY - 8);
